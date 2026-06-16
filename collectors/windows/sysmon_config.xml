@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MAGI minimum Sysmon configuration.
+
+  Captures exactly the four event IDs the Windows collector maps:
+    ID 1  Process creation   (execution chains: parent -> child pivots)
+    ID 3  Network connection  (primary threat signal)
+    ID 7  Image / DLL load    (DLL side-loading & LOLBin detection)
+    ID 22 DNS query           (domain-based C2 correlation)
+
+  Deploy on target hosts (Sysmon >= v15, run elevated):
+    sysmon64.exe -accepteula -i sysmon_config.xml
+  Update an already-installed config:
+    sysmon64.exe -c sysmon_config.xml
+
+  Hash with SHA256 so process_hash lines up with the Neo4j :Process key.
+  Everything not explicitly listed is excluded to keep event volume manageable.
+-->
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>SHA256</HashAlgorithms>
+  <CheckRevocation>false</CheckRevocation>
+
+  <EventFiltering>
+
+    <!-- ID 1: Process creation. Log all; exclude only Sysmon's own noise. -->
+    <RuleGroup name="process_create" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <Image condition="end with">\Sysmon.exe</Image>
+        <Image condition="end with">\Sysmon64.exe</Image>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ID 3: Network connections. Log all; drop loopback chatter. -->
+    <RuleGroup name="network_connect" groupRelation="or">
+      <NetworkConnect onmatch="exclude">
+        <DestinationIp condition="is">127.0.0.1</DestinationIp>
+        <DestinationIp condition="is">::1</DestinationIp>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- ID 7: Image loaded. Scope to unsigned / invalid-signature modules to
+         surface DLL side-loading without drowning in legitimate signed loads. -->
+    <RuleGroup name="image_load" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <Signed condition="is">false</Signed>
+        <SignatureStatus condition="is not">Valid</SignatureStatus>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- ID 22: DNS queries. Log all; exclude noisy local resolution. -->
+    <RuleGroup name="dns_query" groupRelation="or">
+      <DnsQuery onmatch="exclude">
+        <QueryName condition="end with">.in-addr.arpa</QueryName>
+        <QueryName condition="end with">.local</QueryName>
+      </DnsQuery>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>

@@ -1,0 +1,42 @@
+# --- Secrets & local config ---
+.env
+keys/private.pem
+*.pem
+!keys/public.pem
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.python-version
+
+# --- Test / coverage ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- Data / feeds (downloaded at runtime) ---
+feeds_cache/
+*.db
+*.sqlite
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

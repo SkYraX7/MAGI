@@ -1,0 +1,62 @@
+[project]
+name = "magi"
+version = "0.1.0"
+description = "MAGI — Multi-source Adaptive Graph Intelligence: real-time threat detection & campaign correlation"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+# Core dependencies shared by the backend (Phase 2+) and the collector schema (Phase 1).
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "neo4j>=5.20",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+# Windows telemetry collector (Sysmon/EVTX). Only installable on Windows hosts.
+windows = [
+    "pywin32>=306; sys_platform == 'win32'",
+]
+# Linux telemetry collector. `bcc` must be installed from distro packages
+# (NOT this PyPI extra) — it needs kernel headers. Listed here for documentation.
+linux = []
+# Backend runtime extras filled in by later phases (Redis, OSINT, auth, scheduling).
+backend = [
+    "redis>=5.0",
+    "httpx>=0.27",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "apscheduler>=3.10",
+    "prometheus-fastapi-instrumentator>=7.0",
+    "slowapi>=0.1.9",
+]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: requires a live Neo4j + Redis stack (docker-compose.test.yml)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["collectors", "backend"]

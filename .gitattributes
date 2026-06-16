@@ -1,0 +1,8 @@
+# Normalize line endings: keep LF in the repo for all text/source files so the
+# Windows and Linux collectors share identical sources regardless of checkout OS.
+* text=auto eol=lf
+
+# Binary / generated assets — never normalize.
+*.png binary
+*.pem binary
+*.db binary
