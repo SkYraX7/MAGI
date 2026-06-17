@@ -80,10 +80,11 @@ for the original blueprint.
 **Schema note:** `UnifiedLogEvent` was extended with an optional `command_line` field,
 now populated from Sysmon ID 1 and persisted onto `Process` nodes and `SPAWNED` edges.
 
-**Design note:** a feed hit is treated as *authoritative attribution* — a Feodo/Emerging
-match bridges a campaign even when its additive score (+0.40 / +0.30) sits below the 0.5
-threshold. This is what makes the Phase 3 goal (a Feodo-listed IP → `Threat_Campaign`
-within 30s) hold.
+**Design note:** `THREAT_CONFIDENCE_THRESHOLD` defaults to **0.40** (== the Feodo weight)
+so a single Feodo hit clears the bar on score alone. As defense in depth, a feed hit is
+also treated as *authoritative attribution* — a Feodo/Emerging match bridges a campaign
+even when its additive score (e.g. Emerging's +0.30) stays below the threshold. Together
+these make the Phase 3 goal (a Feodo-listed IP → `Threat_Campaign` within 30s) hold.
 
 ---
 

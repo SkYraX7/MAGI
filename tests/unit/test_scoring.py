@@ -47,7 +47,10 @@ def test_score_capped_at_one():
     assert compute_confidence(result) == 1.0
 
 
-def test_feodo_alone_below_threshold():
-    # Documents the design tension: Feodo (0.40) < default 0.5 threshold — which is why
-    # the pipeline treats feed attribution as definitive regardless of score.
-    assert compute_confidence(EnrichmentResult(feodo_hit=True)) < 0.5
+def test_feodo_alone_meets_default_threshold():
+    # The default threshold is lowered to the Feodo weight (0.40) so a single Feodo hit
+    # qualifies on score alone — tie it to the actual config default to avoid drift.
+    from backend.config import Settings
+
+    threshold = Settings(_env_file=None).threat_confidence_threshold
+    assert compute_confidence(EnrichmentResult(feodo_hit=True)) >= threshold

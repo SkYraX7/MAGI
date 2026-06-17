@@ -66,8 +66,8 @@ def _patch_enrichers(monkeypatch, *, feodo_hit=False, vt_malicious=0):
     monkeypatch.setattr(emerging, "enrich", AsyncMock(return_value=EnrichmentResult()))
 
 
-async def test_feodo_hit_bridges_campaign_below_threshold(monkeypatch, mocked_io):
-    # Feodo alone scores 0.40 (< 0.5) but is authoritative attribution -> must bridge.
+async def test_feodo_hit_bridges_campaign(monkeypatch, mocked_io):
+    # Feodo scores 0.40, which meets the lowered 0.40 threshold (and is authoritative).
     _patch_enrichers(monkeypatch, feodo_hit=True)
     flags = []
 
@@ -83,6 +83,31 @@ async def test_feodo_hit_bridges_campaign_below_threshold(monkeypatch, mocked_io
     assert mocked_io["bridge"][1]["campaign"] == feodo.CAMPAIGN
     assert mocked_io["update"][1]["is_malicious"] is True
     assert flags and flags[0].campaign == feodo.CAMPAIGN
+
+
+async def test_emerging_only_bridges_via_attribution(monkeypatch, mocked_io):
+    # Emerging scores 0.30, below the 0.40 threshold — it bridges only because a feed
+    # hit is authoritative attribution. Guards that override after lowering the threshold.
+    monkeypatch.setattr(virustotal, "enrich", AsyncMock(return_value=EnrichmentResult()))
+    monkeypatch.setattr(censys, "enrich", AsyncMock(return_value=EnrichmentResult()))
+    monkeypatch.setattr(feodo, "enrich", AsyncMock(return_value=EnrichmentResult()))
+    monkeypatch.setattr(
+        emerging,
+        "enrich",
+        AsyncMock(
+            return_value=EnrichmentResult(
+                emerging_hit=True, campaign=emerging.CAMPAIGN, source_feed=emerging.FEED_NAME
+            )
+        ),
+    )
+
+    p = EnrichmentPipeline()
+    p._client = object()
+    await p._enrich_ip(_net_event())
+
+    assert mocked_io["bridge"][1]["campaign"] == emerging.CAMPAIGN
+    assert mocked_io["bridge"][1]["confidence"] == pytest.approx(0.30)
+    assert mocked_io["update"][1]["is_malicious"] is True
 
 
 async def test_benign_ip_no_campaign(monkeypatch, mocked_io):

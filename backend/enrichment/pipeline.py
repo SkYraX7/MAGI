@@ -13,9 +13,10 @@ per-IP flow mirrors CLAUDE.md "Enrichment Pipeline":
     7. if score >= THREAT_CONFIDENCE_THRESHOLD  (or a feed directly attributed it):
          bridge a Threat_Campaign, mark the IP malicious, emit a threat_flag
 
-Design decision: a feed hit is *authoritative attribution* — the feed names the threat
-group — so a Feodo/Emerging match bridges a campaign even if the additive score alone
-(+0.40 / +0.30) sits below the 0.5 threshold. This is what makes the Phase 3 goal
+The threshold defaults to 0.40 (== the Feodo weight) so a single Feodo hit clears the
+bar on score alone. As defense in depth, a feed hit is also treated as *authoritative
+attribution* — a Feodo/Emerging match bridges a campaign even when the additive score
+(e.g. Emerging's +0.30) stays below the threshold. Together these make the Phase 3 goal
 ("a Feodo-listed IP creates a Threat_Campaign within 30s") hold.
 
 Per-enricher errors are isolated (``return_exceptions=True`` + per-event try/except) so
