@@ -20,7 +20,7 @@ for the original blueprint.
 |-------|-------|--------|
 | **1** | Dual-platform telemetry ingestion (Windows + Linux collectors) | ✅ implemented |
 | **2** | Neo4j graph engine (schema, driver, ingest, lifespan) | ✅ implemented |
-| 3 | Threat-intel pipeline & Redis cache | ⏳ planned |
+| **3** | Threat-intel pipeline & Redis cache | ✅ implemented |
 | 4 | FastAPI backend & 3D UI | ⏳ planned |
 | 5 | Hardening, alerting, observability | ⏳ planned |
 
@@ -57,8 +57,33 @@ for the original blueprint.
 - **`graph/ingest.py`** — `log_network_event` / `log_process_event` / `log_dns_event`
   (+ `log_event` dispatcher). `MERGE` everywhere, `ON CREATE SET first_seen` /
   `ON MATCH SET last_seen`, fully parameterized Cypher — no string interpolation.
-- **`main.py`** — FastAPI app; lifespan initializes the schema on startup, drains the
-  shared queue into the graph, and closes the driver on shutdown.
+- **`main.py`** — FastAPI app; lifespan initializes the schema on startup, starts the
+  enrichment pipeline that drains the shared queue into the graph, and closes the
+  clients on shutdown.
+
+### Phase 3 — Threat-intel pipeline & cache (`backend/cache/`, `backend/enrichment/`)
+
+- **`cache/redis.py`** — async Redis client singleton; named TTL constants (24h IP cache,
+  12h domain cache, 30s dedup, 60s rate window); key builders; atomic dedup
+  (`SET NX EX`) and per-minute rate-limit helpers.
+- **`enrichment/pipeline.py`** — the worker pool (`ENRICHMENT_WORKER_COUNT`). Per network
+  event: event-hash → 30s dedup → IP cache → parallel fan-out → confidence score →
+  cache write → bridge a `Threat_Campaign` + emit `threat_flag` when malicious.
+- **`enrichment/scoring.py`** — pure additive confidence scorer (VT / Censys / Feodo /
+  Emerging weights, capped at 1.0).
+- **`enrichment/virustotal.py`, `censys.py`** — OSINT enrichers; skip cleanly without
+  keys, enforce rate limits, validate responses with Pydantic, retry 429 with backoff.
+- **`enrichment/feeds/feodo.py`, `emerging.py`** (+ `base.py`) — daily IP blocklists with
+  O(1) membership, line-format validation, disk-cache fallback, and stale-feed alerting.
+- **`enrichment/notify.py`** — `threat_flag` seam (logs in Phase 3; WebSocket in Phase 4).
+
+**Schema note:** `UnifiedLogEvent` was extended with an optional `command_line` field,
+now populated from Sysmon ID 1 and persisted onto `Process` nodes and `SPAWNED` edges.
+
+**Design note:** a feed hit is treated as *authoritative attribution* — a Feodo/Emerging
+match bridges a campaign even when its additive score (+0.40 / +0.30) sits below the 0.5
+threshold. This is what makes the Phase 3 goal (a Feodo-listed IP → `Threat_Campaign`
+within 30s) hold.
 
 ---
 
@@ -70,7 +95,7 @@ for the original blueprint.
 # 1. Environment
 python -m venv .venv
 source .venv/Scripts/activate          # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"                # core + test deps
+pip install -e ".[dev,backend]"        # core + test + enrichment (redis, httpx, …)
 #   add the platform extra you need:
 pip install -e ".[windows]"            # Windows collector (pywin32)
 #   Linux: install bcc from distro packages (NOT pip) — needs kernel headers

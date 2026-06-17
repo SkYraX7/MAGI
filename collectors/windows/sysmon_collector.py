@@ -136,6 +136,7 @@ def parse_sysmon_xml(xml: str) -> Optional[UnifiedLogEvent]:
                 process_hash=_extract_sha256(data.get("Hashes")),
                 pid=pid,
                 parent_process=_basename(data.get("ParentImage")),
+                command_line=data.get("CommandLine"),
             )
         if event_id == 3:  # Network Connect
             return UnifiedLogEvent(

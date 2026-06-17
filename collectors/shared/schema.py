@@ -45,6 +45,9 @@ class UnifiedLogEvent(BaseModel):
     parent_process: Optional[str] = None
     parent_hash: Optional[str] = None
 
+    # --- process event fields ---
+    command_line: Optional[str] = None      # full command line, when the source provides it
+
     # --- network event fields ---
     direction: Optional[Direction] = None
     local_ip: Optional[str] = None

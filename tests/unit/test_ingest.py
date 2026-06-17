@@ -118,6 +118,21 @@ async def test_log_process_event_with_parent_includes_spawn(captured_tx):
     assert captured_tx.params["parent_key"] == "synthetic:explorer.exe@h1"
 
 
+async def test_log_process_event_passes_command_line(captured_tx):
+    evt = UnifiedLogEvent(
+        timestamp=datetime.now(timezone.utc),
+        platform="h1",
+        event_type="process",
+        source_process="powershell.exe",
+        process_hash="DEAD",
+        pid=10,
+        command_line="powershell.exe -enc ABC",
+    )
+    await ingest.log_process_event(evt)
+    assert captured_tx.params["command_line"] == "powershell.exe -enc ABC"
+    assert "p.command_line" in captured_tx.query
+
+
 async def test_log_process_event_without_parent_omits_spawn(captured_tx):
     evt = UnifiedLogEvent(
         timestamp=datetime.now(timezone.utc),

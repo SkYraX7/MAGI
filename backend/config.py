@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     # --- Enrichment ---
     enrichment_worker_count: int = Field(default=4, ge=1)
     threat_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    # VirusTotal free tier is 4 req/min; raise for paid tiers (Redis counter enforces it).
+    virustotal_rate_per_minute: int = Field(default=4, ge=1)
+
+    # --- Threat-intel feeds ---
+    feodo_feed_url: str = "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
+    emerging_feed_url: str = "https://rules.emergingthreats.net/blockrules/compromised-ips.txt"
+    feeds_cache_dir: str = "./feeds_cache"
+    feed_refresh_seconds: int = Field(default=86400, ge=60)  # daily
+    feed_stale_alert_hours: int = Field(default=48, ge=1)
 
     # --- Pruning daemon ---
     prune_interval_seconds: int = Field(default=3600, ge=1)

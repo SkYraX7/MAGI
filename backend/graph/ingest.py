@@ -58,8 +58,10 @@ MERGE (h:Host {name: $platform})
   ON MATCH  SET h.last_seen  = $timestamp
 
 MERGE (p:Process {hash: $process_key})
-  ON CREATE SET p.name = $source_process, p.first_seen = $timestamp, p.hashed = $has_hash
-  ON MATCH  SET p.last_seen = $timestamp
+  ON CREATE SET p.name = $source_process, p.first_seen = $timestamp, p.hashed = $has_hash,
+                p.command_line = $command_line
+  ON MATCH  SET p.last_seen = $timestamp,
+                p.command_line = coalesce($command_line, p.command_line)
 
 MERGE (ip:IP_Address {address: $remote_ip})
   ON CREATE SET ip.first_seen = $timestamp
@@ -79,8 +81,10 @@ MERGE (h:Host {name: $platform})
   ON MATCH  SET h.last_seen  = $timestamp
 
 MERGE (p:Process {hash: $process_key})
-  ON CREATE SET p.name = $source_process, p.first_seen = $timestamp, p.hashed = $has_hash
-  ON MATCH  SET p.last_seen = $timestamp
+  ON CREATE SET p.name = $source_process, p.first_seen = $timestamp, p.hashed = $has_hash,
+                p.command_line = $command_line
+  ON MATCH  SET p.last_seen = $timestamp,
+                p.command_line = coalesce($command_line, p.command_line)
 
 MERGE (h)-[runs:RUNS]->(p)
   ON CREATE SET runs.first_seen = $timestamp
@@ -94,7 +98,7 @@ MERGE (parent:Process {hash: $parent_key})
 MERGE (h)-[pruns:RUNS]->(parent)
   ON CREATE SET pruns.first_seen = $timestamp
 MERGE (parent)-[sp:SPAWNED]->(p)
-  ON CREATE SET sp.timestamp = $timestamp
+  ON CREATE SET sp.timestamp = $timestamp, sp.command_line = $command_line
   ON MATCH  SET sp.timestamp = $timestamp
 """
 
@@ -104,8 +108,10 @@ MERGE (h:Host {name: $platform})
   ON MATCH  SET h.last_seen  = $timestamp
 
 MERGE (p:Process {hash: $process_key})
-  ON CREATE SET p.name = $source_process, p.first_seen = $timestamp, p.hashed = $has_hash
-  ON MATCH  SET p.last_seen = $timestamp
+  ON CREATE SET p.name = $source_process, p.first_seen = $timestamp, p.hashed = $has_hash,
+                p.command_line = $command_line
+  ON MATCH  SET p.last_seen = $timestamp,
+                p.command_line = coalesce($command_line, p.command_line)
 
 MERGE (h)-[runs:RUNS]->(p)
   ON CREATE SET runs.first_seen = $timestamp
@@ -127,6 +133,7 @@ def _base_params(event: UnifiedLogEvent) -> dict:
         "source_process": event.source_process,
         "process_key": _process_key(event),
         "has_hash": bool(event.process_hash),
+        "command_line": event.command_line,
     }
 
 
@@ -186,6 +193,95 @@ async def log_dns_event(event: UnifiedLogEvent) -> None:
     await run_write(_work)
 
 
+# --------------------------------------------------------------------------- #
+# Enrichment writers (Phase 3) — update IP nodes and bridge them to campaigns  #
+# --------------------------------------------------------------------------- #
+
+_IP_ENRICHMENT_CYPHER = """
+MATCH (ip:IP_Address {address: $address})
+SET ip.enriched_at = $enriched_at,
+    ip.vt_score    = $vt_score,
+    ip.censys_asn  = $censys_asn,
+    ip.country     = $country,
+    ip.is_malicious = $is_malicious
+"""
+
+# Bridge a malicious IP to its campaign, then connect the campaign to every host
+# whose process has talked to that IP (PART_OF_CAMPAIGN + TARGETS in one tx).
+_CAMPAIGN_BRIDGE_CYPHER = """
+MERGE (c:Threat_Campaign {name: $campaign})
+  ON CREATE SET c.first_seen = $timestamp, c.source_feed = $source_feed
+  ON MATCH  SET c.source_feed = coalesce(c.source_feed, $source_feed)
+
+WITH c
+MATCH (ip:IP_Address {address: $address})
+SET ip.is_malicious = true, ip.enriched_at = $timestamp
+
+MERGE (ip)-[pc:PART_OF_CAMPAIGN]->(c)
+  ON CREATE SET pc.confidence = $confidence, pc.source_feed = $source_feed
+  ON MATCH  SET pc.confidence = $confidence
+
+WITH c, ip
+OPTIONAL MATCH (h:Host)-[:RUNS]->(:Process)-[:CONNECTED_TO]->(ip)
+FOREACH (_ IN CASE WHEN h IS NULL THEN [] ELSE [1] END |
+  MERGE (c)-[t:TARGETS]->(h)
+    ON CREATE SET t.first_detected = $timestamp
+)
+"""
+
+
+async def update_ip_enrichment(
+    address: str,
+    *,
+    enriched_at,
+    vt_score: int | None = None,
+    censys_asn: int | None = None,
+    country: str | None = None,
+    is_malicious: bool = False,
+) -> None:
+    """Persist enrichment results onto an existing IP_Address node (best effort)."""
+    params = {
+        "address": address,
+        "enriched_at": enriched_at,
+        "vt_score": vt_score,
+        "censys_asn": censys_asn,
+        "country": country,
+        "is_malicious": is_malicious,
+    }
+
+    async def _work(tx: AsyncManagedTransaction) -> None:
+        await tx.run(_IP_ENRICHMENT_CYPHER, **params)
+
+    await run_write(_work)
+
+
+async def bridge_campaign(
+    address: str,
+    *,
+    campaign: str,
+    confidence: float,
+    source_feed: str,
+    timestamp,
+) -> None:
+    """Flag the IP malicious and bridge it to a Threat_Campaign + targeted Hosts.
+
+    Satisfies the Phase 3 goal: a feed-flagged IP gets a Threat_Campaign node bridged
+    to it (and to every host that has connected to it).
+    """
+    params = {
+        "address": address,
+        "campaign": campaign,
+        "confidence": confidence,
+        "source_feed": source_feed,
+        "timestamp": timestamp,
+    }
+
+    async def _work(tx: AsyncManagedTransaction) -> None:
+        await tx.run(_CAMPAIGN_BRIDGE_CYPHER, **params)
+
+    await run_write(_work)
+
+
 async def log_event(event: UnifiedLogEvent) -> None:
     """Dispatch an event to the appropriate writer by ``event_type``."""
     if event.event_type == "network":
@@ -200,4 +296,11 @@ async def log_event(event: UnifiedLogEvent) -> None:
         logger.warning("Unknown event_type %r; dropped", event.event_type)
 
 
-__all__ = ["log_network_event", "log_process_event", "log_dns_event", "log_event"]
+__all__ = [
+    "log_network_event",
+    "log_process_event",
+    "log_dns_event",
+    "log_event",
+    "update_ip_enrichment",
+    "bridge_campaign",
+]

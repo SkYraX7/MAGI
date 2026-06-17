@@ -44,6 +44,7 @@ def test_parse_process_create_event_id_1():
             "Image": r"C:\Windows\System32\powershell.exe",
             "Hashes": "SHA256=AABBCC",
             "ParentImage": r"C:\Windows\explorer.exe",
+            "CommandLine": "powershell.exe -enc ZQBjAGgAbwA=",
         },
     )
     evt = parse_sysmon_xml(xml)
@@ -52,6 +53,7 @@ def test_parse_process_create_event_id_1():
     assert evt.source_process == "powershell.exe"
     assert evt.process_hash == "aabbcc"
     assert evt.parent_process == "explorer.exe"
+    assert evt.command_line == "powershell.exe -enc ZQBjAGgAbwA="
     assert evt.pid == 4321
     assert evt.platform == "WIN-HOST-01"
 
