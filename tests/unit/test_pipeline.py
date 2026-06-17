@@ -67,7 +67,7 @@ def _patch_enrichers(monkeypatch, *, feodo_hit=False, vt_malicious=0):
 
 
 async def test_feodo_hit_bridges_campaign(monkeypatch, mocked_io):
-    # Feodo scores 0.40, which meets the lowered 0.40 threshold (and is authoritative).
+    # Feodo scores 0.40 (below the default threshold) but is authoritative attribution.
     _patch_enrichers(monkeypatch, feodo_hit=True)
     flags = []
 
@@ -86,8 +86,8 @@ async def test_feodo_hit_bridges_campaign(monkeypatch, mocked_io):
 
 
 async def test_emerging_only_bridges_via_attribution(monkeypatch, mocked_io):
-    # Emerging scores 0.30, below the 0.40 threshold — it bridges only because a feed
-    # hit is authoritative attribution. Guards that override after lowering the threshold.
+    # Emerging scores 0.30 (below the threshold) — it bridges only because a feed hit is
+    # authoritative attribution. Guards that override path.
     monkeypatch.setattr(virustotal, "enrich", AsyncMock(return_value=EnrichmentResult()))
     monkeypatch.setattr(censys, "enrich", AsyncMock(return_value=EnrichmentResult()))
     monkeypatch.setattr(feodo, "enrich", AsyncMock(return_value=EnrichmentResult()))

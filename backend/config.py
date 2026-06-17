@@ -46,9 +46,7 @@ class Settings(BaseSettings):
 
     # --- Enrichment ---
     enrichment_worker_count: int = Field(default=4, ge=1)
-    # Set to the Feodo weight (0.40) so a single Feodo-tracker hit clears the bar on
-    # score alone; also lets two low-confidence signals (e.g. VT 1-4 + Censys) qualify.
-    threat_confidence_threshold: float = Field(default=0.4, ge=0.0, le=1.0)
+    threat_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     # VirusTotal free tier is 4 req/min; raise for paid tiers (Redis counter enforces it).
     virustotal_rate_per_minute: int = Field(default=4, ge=1)
 

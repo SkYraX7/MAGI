@@ -47,10 +47,10 @@ def test_score_capped_at_one():
     assert compute_confidence(result) == 1.0
 
 
-def test_feodo_alone_meets_default_threshold():
-    # The default threshold is lowered to the Feodo weight (0.40) so a single Feodo hit
-    # qualifies on score alone — tie it to the actual config default to avoid drift.
+def test_feodo_alone_below_default_threshold():
+    # Feodo scores 0.40 — below the default threshold — which is why the pipeline treats a
+    # feed hit as authoritative attribution (it bridges a campaign regardless of score).
     from backend.config import Settings
 
     threshold = Settings(_env_file=None).threat_confidence_threshold
-    assert compute_confidence(EnrichmentResult(feodo_hit=True)) >= threshold
+    assert compute_confidence(EnrichmentResult(feodo_hit=True)) < threshold
