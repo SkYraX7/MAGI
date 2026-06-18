@@ -14,6 +14,8 @@ close the Neo4j driver -> close Redis.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -67,10 +69,23 @@ async def lifespan(app: FastAPI):
     app.state.pipeline = pipeline
     start_pruning()
 
+    # Optional self-seeding demo telemetry (DEMO_MODE=true). Dev only.
+    demo_stop = asyncio.Event()
+    demo_task: asyncio.Task | None = None
+    if settings.demo_mode:
+        from backend.demo import run_demo_seeder
+
+        demo_task = asyncio.create_task(run_demo_seeder(demo_stop))
+
     try:
         yield
     finally:
         logger.info("MAGI backend shutting down")
+        if demo_task is not None:
+            demo_stop.set()
+            demo_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await demo_task
         stop_pruning()
         await pipeline.stop()      # drain the enrichment queue/workers
         await manager.drain()      # close WS sessions so clients reconnect

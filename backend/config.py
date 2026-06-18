@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # --- API ---
     api_rate_limit: str = "120/minute"  # slowapi default per-client limit
 
+    # --- Demo ---
+    # When true the backend self-seeds synthetic telemetry so the graph populates
+    # without real collectors. Dev/demo only — never enable in production.
+    demo_mode: bool = False
+
     # --- Logging ---
     log_level: str = "INFO"
 
