@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # --- Admin (MVP single-user store) ---
     admin_username: str = "admin"
     admin_password_hash: str = ""
+    admin_role: str = "admin"
+
+    # --- API ---
+    api_rate_limit: str = "120/minute"  # slowapi default per-client limit
 
     # --- Logging ---
     log_level: str = "INFO"

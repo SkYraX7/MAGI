@@ -26,10 +26,9 @@ one failing API never crashes a worker.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import logging
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 import httpx
 
@@ -62,9 +61,15 @@ def compute_event_hash(event: UnifiedLogEvent) -> str:
 class EnrichmentPipeline:
     """Owns the worker pool, the shared HTTP client, and feed refresh."""
 
-    def __init__(self, on_threat: Optional[ThreatNotifier] = None) -> None:
+    def __init__(
+        self,
+        on_threat: Optional[ThreatNotifier] = None,
+        on_event: Optional[Callable[[UnifiedLogEvent], Awaitable[None]]] = None,
+    ) -> None:
         self._settings = get_settings()
         self._on_threat: ThreatNotifier = on_threat or log_threat
+        # Called after each successful graph write (wired to the WS broadcaster in main).
+        self._on_event = on_event
         self._client: Optional[httpx.AsyncClient] = None
         self._workers: list[asyncio.Task] = []
         self._feed_task: Optional[asyncio.Task] = None
@@ -127,6 +132,8 @@ class EnrichmentPipeline:
                 continue
             try:
                 await log_event(event)  # Phase 2 graph ingest for every event
+                if self._on_event is not None:
+                    await self._on_event(event)  # broadcast node/edge adds to WS clients
                 if event.event_type == "network" and event.remote_ip:
                     await self._enrich_ip(event)
             except Exception:  # noqa: BLE001 - keep worker alive on any failure
