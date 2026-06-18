@@ -21,8 +21,8 @@ for the original blueprint.
 | **1** | Dual-platform telemetry ingestion (Windows + Linux collectors) | ✅ implemented |
 | **2** | Neo4j graph engine (schema, driver, ingest, lifespan) | ✅ implemented |
 | **3** | Threat-intel pipeline & Redis cache | ✅ implemented |
-| 4 | FastAPI backend & 3D UI | ⏳ planned |
-| 5 | Hardening, alerting, observability | ⏳ planned |
+| **4** | FastAPI backend (auth, REST, WebSocket) & React 3D UI | ✅ implemented |
+| **5** | Hardening, alerting, observability, Docker | ✅ implemented |
 
 ---
 
@@ -85,6 +85,31 @@ match bridges a campaign even when its additive score (Feodo +0.40 / Emerging +0
 below `THREAT_CONFIDENCE_THRESHOLD` (default 0.5). This is what makes the Phase 3 goal (a
 Feodo-listed IP → `Threat_Campaign` within 30s) hold regardless of the threshold.
 
+### Phase 4 — API, realtime & 3D UI (`backend/auth.py`, `backend/routers/`, `frontend/`)
+
+- **`auth.py`** — RS256 JWT issue/verify, bcrypt passwords (used directly), `role`-claim
+  RBAC (`get_current_user` / `require_admin`), WS handshake token check.
+- **`routers/`** — `POST /auth/token`; `GET /graph/nodes` (paginated, `limit≤500`),
+  `/graph/campaigns`, `/graph/host/{name}`; `DELETE /graph/prune` (admin); `GET /healthz`;
+  `WS /ws/live-threats` (token validated on handshake, replays current graph on connect).
+- **`realtime.py`** — in-memory `ConnectionManager` + `ws:sessions`; broadcasts
+  `node_add` / `edge_add` / `threat_flag` / `prune` to all clients.
+- **`frontend/`** — React 18 + Vite + TS. `useWsGraph.ts` (exponential-backoff reconnect
+  with jitter, state preserved across reconnects), `ThreatGraph.tsx` (`react-force-graph-3d`),
+  `colorMap.ts` (blue hosts → red malicious IPs → orange campaigns), JWT `AuthContext`.
+- **Alerting** = **OS-level toasts** via the browser Web Notifications API (`notifications.ts`)
+  — a `threat_flag` raises a real Windows/macOS toast; no backend alerter service.
+
+### Phase 5 — Hardening, observability & Docker
+
+- **`/healthz`** pings Neo4j + Redis (503 with detail on failure); **`/metrics`** Prometheus.
+- **`graph/prune.py`** — `AsyncIOScheduler` ages out stale benign edges and broadcasts a
+  `prune` message; never touches campaign-linked or malicious nodes.
+- Rate limiting (slowapi), CORS locked to `ALLOWED_ORIGINS`, graceful-shutdown ordering.
+- **`docker-compose.yml`** (Neo4j + Redis + backend + frontend, healthchecks, named
+  volumes; Neo4j/Redis kept off host ports), Dockerfiles, and **`scripts/neo4j_backup.sh`**
+  (nightly dump + retention, cron-ready).
+
 ---
 
 ## Quick start (dev)
@@ -114,13 +139,28 @@ python -m collectors.windows.sysmon_collector
 sudo python -m collectors.linux.ebpf_collector
 ```
 
-### Run the backend (Phase 2)
+### Run the full stack (Phases 2–5)
 
 ```bash
-# Bring up Neo4j (e.g. the test stack), then:
+# Everything (Neo4j + Redis + backend + frontend) in containers:
+docker compose up --build
+#   frontend  -> http://localhost:3000   (login, live 3D graph)
+#   backend   -> http://localhost:8000   (/healthz, /metrics, /docs)
+
+# First, create the admin login (writes a bcrypt hash):
+python -m backend.auth hash 'your-password'    # paste into ADMIN_PASSWORD_HASH in .env
+```
+
+### Run backend + frontend separately (dev)
+
+```bash
+# Backend (needs Neo4j + Redis — e.g. the test stack):
 docker compose -f docker-compose.test.yml up -d
 uvicorn backend.main:app --reload
-# GET http://localhost:8000/healthz  ->  {"status": "ok"}
+# /healthz -> {"neo4j": "ok", "redis": "ok"}
+
+# Frontend (Vite dev server proxies /auth, /graph, /ws to :8000):
+cd frontend && npm install && npm run dev      # http://localhost:3000
 ```
 
 ---

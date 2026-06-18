@@ -32,6 +32,7 @@ frontend/.vite/
 
 # --- Data / feeds (downloaded at runtime) ---
 feeds_cache/
+backups/
 *.db
 *.sqlite
 
