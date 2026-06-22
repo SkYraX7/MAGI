@@ -8,14 +8,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install backend + core deps via the project's extras.
-COPY pyproject.toml ./
-COPY README.md ./
-RUN pip install --upgrade pip && pip install ".[backend]"
-
-# App code (only what the backend needs at runtime).
+# The source packages must be present before `pip install .` builds the wheel
+# (setuptools needs the `backend` and `collectors` packages it declares).
+COPY pyproject.toml README.md ./
 COPY backend/ ./backend/
 COPY collectors/ ./collectors/
+RUN pip install --upgrade pip && pip install ".[backend]"
+
 COPY keys/ ./keys/
 
 EXPOSE 8000

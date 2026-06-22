@@ -1,8 +1,9 @@
 # --- build stage ---
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package.json package-lock.json* .npmrc* ./
+# --legacy-peer-deps: @vitejs/plugin-react's peer range lags behind Vite 8 (works at runtime).
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build
 
