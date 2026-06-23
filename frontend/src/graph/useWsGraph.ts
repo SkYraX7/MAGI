@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showThreatToast } from "./notifications";
-import type { GraphLink, GraphNode, WsMessage } from "./types";
+import type { GraphLink, GraphNode, LogEntry, LogSeverity, WsMessage } from "./types";
 import { linkId } from "./types";
 
 export type WsStatus = "connecting" | "open" | "reconnecting";
 
 const BASE_MS = 500;
 const MAX_MS = 30_000;
+const MAX_LOG = 300;
+
+function short(s: string, n = 16): string {
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+}
 
 function wsUrl(token: string): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -20,9 +25,9 @@ interface GraphData {
 }
 
 /**
- * Live graph over the WebSocket. Reconnects with exponential backoff + jitter and
- * preserves the last-known graph across the gap so the view never wipes; the backend
- * replays current nodes/edges on (re)connect.
+ * Live graph + telemetry trail over the WebSocket. Reconnects with exponential backoff
+ * + jitter and preserves the last-known graph across the gap so the view never wipes;
+ * the backend replays current nodes/edges on (re)connect.
  */
 export function useWsGraph(token: string | null) {
   // Stable maps so react-force-graph keeps node positions across updates.
@@ -31,12 +36,29 @@ export function useWsGraph(token: string | null) {
   const [version, setVersion] = useState(0);
   const [status, setStatus] = useState<WsStatus>("connecting");
 
+  // Bounded telemetry log, versioned separately so log updates don't rebuild graphData.
+  const logRef = useRef<LogEntry[]>([]);
+  const logSeq = useRef(0);
+  const [logVersion, setLogVersion] = useState(0);
+
   const wsRef = useRef<WebSocket | null>(null);
   const attempt = useRef(0);
   const timer = useRef<number | undefined>(undefined);
   const closedByUs = useRef(false);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
+
+  const pushLog = useCallback((severity: LogSeverity, kind: string, text: string) => {
+    const arr = logRef.current;
+    arr.push({ id: logSeq.current++, ts: Date.now(), severity, kind, text });
+    if (arr.length > MAX_LOG) arr.splice(0, arr.length - MAX_LOG);
+    setLogVersion((v) => v + 1);
+  }, []);
+
+  const clearLog = useCallback(() => {
+    logRef.current = [];
+    setLogVersion((v) => v + 1);
+  }, []);
 
   const applyMessage = useCallback(
     (msg: WsMessage) => {
@@ -52,6 +74,9 @@ export function useWsGraph(token: string | null) {
               label: msg.data.label,
               properties: msg.data.properties,
             });
+            const p = msg.data.properties || {};
+            const name = (p.name as string) || (p.address as string) || short(msg.data.id);
+            pushLog("info", "node_add", `NODE   ${msg.data.label}  ${name}`);
           }
           bump();
           break;
@@ -65,6 +90,11 @@ export function useWsGraph(token: string | null) {
               target: msg.data.target,
               rel: msg.data.rel,
             });
+            pushLog(
+              "info",
+              "edge_add",
+              `EDGE   ${short(msg.data.source)} —${msg.data.rel}→ ${short(msg.data.target)}`,
+            );
             bump();
           }
           break;
@@ -78,6 +108,11 @@ export function useWsGraph(token: string | null) {
             node.properties = { ...node.properties, is_malicious: true };
             bump();
           }
+          pushLog(
+            "threat",
+            "threat_flag",
+            `THREAT ${msg.data.node_id}  ${msg.data.campaign}  ${Math.round(msg.data.confidence * 100)}%`,
+          );
           showThreatToast(msg.data);
           break;
         }
@@ -86,14 +121,17 @@ export function useWsGraph(token: string | null) {
           for (const id of msg.data.removed_edge_ids) {
             if (links.current.delete(id)) changed = true;
           }
-          if (changed) bump();
+          if (changed) {
+            pushLog("warn", "prune", `PRUNE  removed ${msg.data.removed_edge_ids.length} edge(s)`);
+            bump();
+          }
           break;
         }
         default:
           break; // pong / unknown
       }
     },
-    [bump],
+    [bump, pushLog],
   );
 
   useEffect(() => {
@@ -149,5 +187,11 @@ export function useWsGraph(token: string | null) {
     [version],
   );
 
-  return { graphData, status, nodeMap: nodes.current };
+  const log = useMemo<LogEntry[]>(
+    () => logRef.current.slice(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [logVersion],
+  );
+
+  return { graphData, status, nodeMap: nodes.current, log, clearLog };
 }

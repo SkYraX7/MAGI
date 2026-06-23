@@ -6,12 +6,16 @@ interface Props {
   nodes: GraphNode[];
   links: GraphLink[];
   nodeMap: Map<string, GraphNode>;
+  width?: number;
+  height?: number;
 }
 
 /** react-force-graph-3d wrapper applying MAGI's colour + size semantics. */
-export function ThreatGraph({ nodes, links, nodeMap }: Props) {
+export function ThreatGraph({ nodes, links, nodeMap, width, height }: Props) {
   return (
     <ForceGraph3D
+      width={width}
+      height={height}
       graphData={{ nodes, links }}
       backgroundColor="#05070d"
       nodeColor={(n) => nodeColor(n as GraphNode)}

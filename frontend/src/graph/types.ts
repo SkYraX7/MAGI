@@ -34,3 +34,16 @@ export type WsMessage =
 export function linkId(source: string, target: string, rel: string): string {
   return `${source}|${target}|${rel}`;
 }
+
+// --- Live telemetry trail + dockable panel ---
+export type Dock = "left" | "right" | "bottom";
+
+export type LogSeverity = "info" | "warn" | "threat";
+
+export interface LogEntry {
+  id: number;
+  ts: number; // epoch ms
+  kind: string; // node_add | edge_add | threat_flag | prune
+  severity: LogSeverity;
+  text: string;
+}
