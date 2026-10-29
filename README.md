@@ -1,4 +1,4 @@
-# MAGI — Multi-source Adaptive Graph Intelligence
+# MAGI: Multi-source Adaptive Graph Intelligence
 
 A distributed, real-time threat-detection and campaign-correlation platform. MAGI
 ingests endpoint telemetry from Windows (Sysmon/EVTX) and Linux (eBPF/auditd), maps
